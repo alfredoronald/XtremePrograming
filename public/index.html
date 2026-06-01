@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Entorno Pair Programming - Progra</title>
+    <style>
+        :root {
+            --bg-color: #1e1e1e;
+            --text-color: #d4d4d4;
+            --accent-blue: #007acc;
+            --accent-green: #4ec9b0;
+            --accent-orange: #ce9178;
+            --panel-bg: #252526;
+            --border-color: #3c3c3c;
+            --danger-color: #f44336;
+        }
+
+        body {
+            font-family: 'Consolas', 'Courier New', monospace;
+            margin: 0; padding: 0;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            height: 100vh; overflow: hidden;
+        }
+
+        #pantalla-selector {
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            background-color: #111; z-index: 10000;
+            display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 30px;
+        }
+        .contenedor-tarjetas { display: flex; gap: 40px; }
+        .tarjeta-rol {
+            background-color: var(--panel-bg); border: 2px solid var(--border-color);
+            border-radius: 8px; padding: 30px; width: 220px; text-align: center;
+            cursor: pointer; transition: transform 0.2s, border-color 0.2s;
+        }
+        .tarjeta-rol:hover { transform: translateY(-5px); }
+        #rol-piloto:hover { border-color: var(--accent-orange); }
+        #rol-copiloto:hover { border-color: var(--accent-blue); }
+
+        #header-progreso-superior {
+            position: fixed; top: 0; left: 0; width: 100%;
+            background-color: var(--panel-bg); border-bottom: 2px solid var(--border-color);
+            padding: 12px 24px; box-sizing: border-box; z-index: 9999;
+            display: flex; flex-direction: column; gap: 8px;
+        }
+        .item-barra { display: flex; flex-direction: column; gap: 4px; }
+        .meta-barra { display: flex; justify-content: space-between; font-size: 11px; font-weight: bold; }
+        .lbl-azul { color: #569cd6; }
+        .lbl-verde { color: var(--accent-green); }
+        .riel-progreso { width: 100%; background-color: #111; border: 1px solid var(--border-color); border-radius: 4px; height: 16px; overflow: hidden; }
+        .llenado-barra { width: 0%; height: 100%; transition: width 0.3s ease-in-out; }
+        #barra-azul { background: linear-gradient(90deg, #005999, var(--accent-blue)); }
+        #barra-verde { background: linear-gradient(90deg, #1f8a70, #28a745); }
+
+        .workspace { margin-top: 85px; display: flex; height: calc(100vh - 85px); }
+        .editor-codigo { flex: 2; background-color: var(--bg-color); padding: 20px; overflow-y: auto; border-right: 1px solid var(--border-color); }
+        .linea-codigo { display: flex; gap: 15px; }
+        .num-linea { color: #858585; text-align: right; width: 25px; user-select: none; }
+        
+        #capa-marcas {
+            color: #ffc107; font-size: 13px; font-style: italic; 
+            margin: 0; background-color: transparent; 
+            padding: 0; border-left: none; 
+            display: none; border-radius: 4px; word-break: break-all;
+        }
+
+        .panel-control-pair { flex: 1; background-color: var(--panel-bg); display: flex; flex-direction: column; padding: 20px; gap: 15px; box-sizing: border-box; }
+        .seccion-info { background-color: var(--bg-color); border: 1px solid var(--border-color); border-radius: 4px; padding: 12px; }
+        .seccion-info h3 { margin: 0 0 6px 0; font-size: 14px; color: #fff; border-bottom: 1px solid var(--border-color); padding-bottom: 6px;}
+
+        #alerta-revision {
+            background-color: rgba(244, 67, 54, 0.2); border: 1px solid var(--danger-color);
+            color: #ff8a80; padding: 10px; border-radius: 4px; font-size: 11px; display: none; margin-bottom: 10px;
+        }
+
+        .btn-solucionado {
+            font-family: 'Consolas', monospace; padding: 12px; font-size: 12px; font-weight: bold;
+            border: none; border-radius: 4px; cursor: pointer; color: #fff; text-transform: uppercase;
+            width: 100%; background-color: #28a745; display: none; margin-top: 10px;
+        }
+
+        .input-text { width: 100%; background-color: #111; border: 1px solid var(--border-color); color: #fff; padding: 8px; box-sizing: border-box; border-radius: 4px; font-family: monospace; }
+        .area-piloto { width: 100%; height: 80px; background-color: #111; border: 1px solid var(--border-color); color: #fff; font-family: 'Consolas', monospace; padding: 10px; box-sizing: border-box; resize: none; }
+        .consola-salida { flex: 1; background-color: #111; border: 1px solid var(--border-color); border-radius: 4px; padding: 10px; font-size: 11px; color: #b5cea8; overflow-y: auto; }
+    </style>
+    <script src="/socket.io/socket.io.js"></script>
+</head>
+<body>
+
+    <div id="pantalla-selector">
+        <h1 style="margin:0; font-size:28px; color:#fff;">Selecciona tu Rol en la Sesión</h1>
+        <div class="contenedor-tarjetas">
+            <div id="rol-piloto" class="tarjeta-rol" onclick="seleccionarRol('Piloto')">
+                <h2 style="color: var(--accent-orange); margin:0 0 10px 0;">👨‍💻 PILOTO</h2>
+                <p>Escribe el código principal y colabora en la resolución de las marcas enviadas.</p>
+            </div>
+            <div id="rol-copiloto" class="tarjeta-rol" onclick="seleccionarRol('Copiloto')">
+                <h2 style="color: #569cd6; margin:0 0 10px 0;">👁️ COPILOTO</h2>
+                <p>Envía mensajes de ajuste presionando ENTER para actualizar el progreso azul.</p>
+            </div>
+        </div>
+    </div>
+
+    <header id="header-progreso-superior">
+        <div id="contenedor-barra-azul" class="item-barra">
+            <div class="meta-barra lbl-azul"><span>Ajustes Detectados (Mensajes del Copiloto)</span><span id="txt-puntos-azul">0 Pts</span></div>
+            <div class="riel-progreso"><div id="barra-azul" class="llenado-barra"></div></div>
+        </div>
+        <div class="item-barra">
+            <div class="meta-barra lbl-verde"><span>Consenso Mutuo (Botón Solucionado)</span><span id="txt-puntos-verde">0 Pts</span></div>
+            <div class="riel-progreso"><div id="barra-verde" class="llenado-barra"></div></div>
+        </div>
+    </header>
+
+    <div class="workspace">
+        <main class="editor-codigo">
+            <div class="linea-codigo" style="background-color: #2d2d2d; padding: 2px 0;"><span class="num-linea">1</span><span id="codigo-texto" style="color: #fff; margin-left:5px;"></span></div>
+            <div id="capa-marcas"></div>
+        </main>
+
+        <aside class="panel-control-pair">
+            <div class="seccion-info">
+                <h3>Información de Sesión</h3>
+                <p style="font-size: 12px; margin: 4px 0;"><strong>ID Sesión:</strong> <span style="color:var(--accent-green);">1</span></p>
+                <p style="font-size: 12px; margin: 4px 0;"><strong>Tu Rol:</strong> <span id="tag-rol-usuario" style="font-weight:bold;"></span></p>
+            </div>
+
+            <div id="zona-consenso" class="seccion-info" style="display: none; flex-direction: column;">
+                <div id="alerta-revision"></div>
+                <button id="btn-solucionado-compartido" class="btn-solucionado" onclick="presionarSolucionado()">Marcar como Solucionado</button>
+            </div>
+
+            <div id="controles-piloto" class="seccion-info" style="display: none; flex-direction: column; gap: 10px;">
+                <h3>Panel de Escritura</h3>
+                <textarea id="txa-codigo" class="area-piloto" placeholder="Escribe tu código fuente aquí..." oninput="emitirEscrituraPiloto()"></textarea>
+            </div>
+
+            <div id="controles-copiloto" class="seccion-info" style="display: none; flex-direction: column; gap: 10px;">
+                <h3>Panel del Copiloto</h3>
+                <label style="font-size:11px; color:#858585;">Escribe la corrección y presiona <strong>ENTER</strong>:</label>
+                <input id="txt-mensaje-correccion" class="input-text" type="text" placeholder="Ej: Cambiar int por let... + [Enter]" onkeydown="evaluarTeclaCopiloto(event)">
+            </div>
+
+            <div class="consola-salida" id="consola-logs"></div>
+        </aside>
+    </div>
+
+    <script>
+        const socket = io();
+        const idSesion = 1;
+        let miRol = '';
+        const logsTerminal = document.getElementById('consola-logs');
+
+        function escribirLog(msg) {
+            logsTerminal.innerText += `[${new Date().toLocaleTimeString()}] ${msg}\n`;
+            logsTerminal.scrollTop = logsTerminal.scrollHeight;
+        }
+
+        function seleccionarRol(rol) {
+            miRol = rol;
+            document.getElementById('pantalla-selector').style.display = 'none';
+            document.getElementById('tag-rol-usuario').innerText = miRol;
+            document.getElementById('zona-consenso').style.display = 'flex';
+
+            if (miRol === 'Piloto') {
+                document.getElementById('controles-piloto').style.display = 'flex';
+                document.getElementById('tag-rol-usuario').style.color = 'var(--accent-orange)';
+                document.getElementById('contenedor-barra-azul').style.display = 'none';
+            } else {
+                document.getElementById('controles-copiloto').style.display = 'flex';
+                document.getElementById('tag-rol-usuario').style.color = '#569cd6';
+                document.getElementById('contenedor-barra-azul').style.display = 'flex';
+            }
+            escribirLog(`Te has unido como: ${miRol}`);
+            socket.emit('unirse_sesion', idSesion);
+        }
+
+        function emitirEscrituraPiloto() {
+            socket.emit('piloto_escribe_codigo', { idSesion: idSesion, codigo: document.getElementById('txa-codigo').value });
+        }
+        
+        socket.on('actualizar_codigo_pantalla', (data) => {
+            document.getElementById('codigo-texto').innerText = data.codigo;
+        });
+
+        function evaluarTeclaCopiloto(e) {
+            if (e.key === 'Enter' || e.keyCode === 13) {
+                e.preventDefault();
+                const inputElement = document.getElementById('txt-mensaje-correccion');
+                const mensaje = inputElement.value;
+                
+                if (mensaje.trim() !== "") {
+                    escribirLog(`Enviando ajuste al Servidor: "${mensaje}"...`);
+                    socket.emit('copiloto_envia_mensaje_correccion', { idSesion: idSesion, mensaje: mensaje });
+                    inputElement.value = ''; 
+                }
+            }
+        }
+
+        socket.on('activar_flujo_correccion', (data) => {
+            escribirLog(`⚠️ Marca inyectada al código: "${data.mensaje}"`);
+            
+            const divMarcas = document.getElementById('capa-marcas');
+            divMarcas.innerText = `❌ Ajuste del Copiloto: ${data.mensaje}`;
+            divMarcas.style.margin = '6px 0 6px 40px';
+            divMarcas.style.backgroundColor = 'rgba(255, 193, 7, 0.15)';
+            divMarcas.style.padding = '8px 12px';
+            divMarcas.style.borderLeft = '4px solid #ffc107';
+            divMarcas.style.display = 'block';
+
+            const alertaRevision = document.getElementById('alerta-revision');
+            alertaRevision.innerText = `⚠️ Corrección activa: "${data.mensaje}"`;
+            alertaRevision.style.display = 'block';
+            
+            const btn = document.getElementById('btn-solucionado-compartido');
+            btn.style.display = 'block';
+            btn.disabled = false;
+            btn.innerText = "Marcar como Solucionado";
+            btn.style.backgroundColor = "var(--accent-green)";
+        });
+
+        function presionarSolucionado() {
+            const btn = document.getElementById('btn-solucionado-compartido');
+            btn.disabled = true;
+            btn.style.backgroundColor = "#555";
+            btn.innerText = "Esperando confirmación...";
+            
+            socket.emit('usuario_presiona_solucionado', { idSesion: idSesion, rol: miRol });
+            escribirLog("Has votado 'Solucionado'. Esperando respuesta cooperativa.");
+        }
+
+        socket.on('limpiar_entorno_consenso', () => {
+            escribirLog("✅ ¡Consenso total! Código validado.");
+            
+            const divMarcas = document.getElementById('capa-marcas');
+            divMarcas.innerText = '';
+            divMarcas.style.margin = '0';
+            divMarcas.style.backgroundColor = 'transparent';
+            divMarcas.style.padding = '0';
+            divMarcas.style.borderLeft = 'none';
+            divMarcas.style.display = 'none';
+
+            document.getElementById('alerta-revision').style.display = 'none';
+            document.getElementById('btn-solucionado-compartido').style.display = 'none';
+        });
+
+        socket.on('actualizar_pantalla_progreso', (data) => {
+            // El texto numérico de ambos acumuladores subirá de forma infinita
+            document.getElementById('txt-puntos-azul').innerText = `${data.avance_azul} Pts`;
+            document.getElementById('txt-puntos-verde').innerText = `${data.avance_verde} Pts`;
+            
+            // MODIFICACIÓN: Ambos rieles gráficos se quedan al 100% de manera segura si superan el límite visual
+            const porcentajeVisualAzul = data.avance_azul > 100 ? 100 : data.avance_azul;
+            const porcentajeVisualVerde = data.avance_verde > 100 ? 100 : data.avance_verde;
+            
+            document.getElementById('barra-azul').style.width = porcentajeVisualAzul + '%';
+            document.getElementById('barra-verde').style.width = porcentajeVisualVerde + '%';
+        });
+    </script>
+</body>
+</html>
