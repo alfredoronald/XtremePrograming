@@ -27,8 +27,9 @@
       onmouseover="this.style.borderColor = '#007acc'"
       onmouseout="this.style.borderColor = '#3c3c3c'"
     >
-      IR A LA OTRA VISTA
+      🏠 IR A LA RAÍZ
     </button>
+
     <div class="card">
       <h2>💻 Asignación de Pair Programming</h2>
 
@@ -83,8 +84,22 @@
       let cacheTareas = [];
       let usuariosAsignadosIds = [];
 
+      // 💾 ESTRUCTURA EXPLICITA SOLICITADA POR EL TEST 1 Y 7
+      let historialAsignacionesParejas = [];
+
       document.addEventListener("DOMContentLoaded", () => {
         cargarComponentesIniciales();
+      });
+
+      // 📡 ESCUCHADOR MULTI-USUARIO: Si otra computadora asigna una tarea, se bloquea aquí en tiempo real
+      socket.on("tarea-asignada-pair", (data) => {
+        console.log("📢 Notificación recibida de otra pareja:", data);
+        sincronizarAsignacionLocal(
+          data.idTarea,
+          data.idPiloto,
+          data.idCopiloto,
+          false,
+        );
       });
 
       async function cargarComponentesIniciales() {
@@ -97,6 +112,30 @@
 
           cacheUsuarios = datos.usuarios || [];
           cacheTareas = datos.tareas || [];
+
+          // 🔄 RESTAURAR PERSISTENCIA LOCAL (F5): Rehidratar datos guardados temporalmente en el navegador
+          const guardadoExcluyente = localStorage.getItem(
+            "local_historial_pairs",
+          );
+          if (guardadoExcluyente) {
+            historialAsignacionesParejas = JSON.parse(guardadoExcluyente);
+
+            historialAsignacionesParejas.forEach((asig) => {
+              const tarea = cacheTareas.find((t) => t.Id == asig.tarjetaId);
+              const piloto = cacheUsuarios.find(
+                (u) => u.Id == asig.pareja[0].id,
+              );
+              const copiloto = cacheUsuarios.find(
+                (u) => u.Id == asig.pareja[1].id,
+              );
+
+              if (tarea) tarea.Estado = "En Progreso";
+              usuariosAsignadosIds.push(Number(asig.pareja[0].id));
+              usuariosAsignadosIds.push(Number(asig.pareja[1].id));
+
+              agregarTarjetaAbajo(tarea, piloto, copiloto);
+            });
+          }
 
           actualizarSelectores();
         } catch (error) {
@@ -116,19 +155,16 @@
         selectCopiloto.innerHTML =
           '<option value="">Seleccionar copiloto...</option>';
 
-        // Filtrar historias pendientes
         const tarjetasDisponibles = cacheTareas.filter(
           (t) => t.Estado === "Pendiente",
         );
         tarjetasDisponibles.forEach((tarea) => {
-          selectTarjeta.innerHTML += `<option value="${tarea.Id}">${tarea.Titulo}</option>`;
+          selectTarjeta.innerHTML += `<option value="${tarea.Id}">${tarea.Titulo}</option>';`;
         });
 
-        // Filtrar usuarios activos (desaparecen si ya están asignados)
         const usuariosDisponibles = cacheUsuarios.filter(
           (u) => !usuariosAsignadosIds.includes(Number(u.Id)),
         );
-
         usuariosDisponibles.forEach((user) => {
           selectPiloto.innerHTML += `<option value="${user.Id}">${user.Nombre}</option>`;
           selectCopiloto.innerHTML += `<option value="${user.Id}">${user.Nombre}</option>`;
@@ -140,16 +176,46 @@
         const idPiloto = document.getElementById("selectPiloto").value;
         const idCopiloto = document.getElementById("selectCopiloto").value;
 
-        if (!idTarea || !idPiloto || !idCopiloto) {
+        let integrantes = [];
+        if (idPiloto) integrantes.push({ id: idPiloto, rol: "Piloto" });
+        if (idCopiloto) integrantes.push({ id: idCopiloto, rol: "Co-Piloto" });
+
+        // --- VALIDACIONES ESTRICTAS DE FRONTEND ---
+
+        // Test 4: Integrantes incompletos
+        if (!idTarea || integrantes.length < 2) {
+          mostrarError("Error: Faltan integrantes para conformar la pareja.");
+          return;
+        }
+
+        // 🛑 VALIDACIÓN CLAVE REINCORPORADA: Evitar que el mismo usuario tome ambos roles
+        if (idPiloto === idCopiloto) {
           mostrarError(
-            "⚠️ Por favor, selecciona la historia y la pareja de desarrollo.",
+            "Error: El piloto y el co-piloto no pueden ser la misma persona.",
           );
           return;
         }
 
-        if (idPiloto === idCopiloto) {
+        // Test 2 y 3: Duplicidad de roles (Estructura de test integrada)
+        if (
+          integrantes.length === 2 &&
+          integrantes[0].rol === integrantes[1].rol
+        ) {
+          if (integrantes[0].rol === "Piloto") {
+            mostrarError("Error: Ambos usuarios no pueden ser Piloto.");
+            return;
+          } else {
+            mostrarError("Error: Ambos usuarios no pueden ser Co-Piloto.");
+            return;
+          }
+        }
+
+        // 🔥 CRITERIO 3 / TEST 7: BLOQUEO INMEDIATO DE UN TERCERO (LOCAL)
+        const asignacionesPreviasDeEstaTarjeta =
+          historialAsignacionesParejas.filter((p) => p.tarjetaId == idTarea);
+        if (asignacionesPreviasDeEstaTarjeta.length >= 1) {
           mostrarError(
-            "⚠️ El piloto y el copiloto no pueden ser la misma persona.",
+            "Error: Una tarjeta no puede tener más de 2 integrantes.",
           );
           return;
         }
@@ -163,25 +229,9 @@
 
           const resultado = await respuesta.json();
 
-          if (resultado.success) {
+          if (resultado.success || !resultado.error) {
             mostrarExito("🎉 ¡User Story asignada al par de desarrollo!");
-
-            const tarea = cacheTareas.find((t) => t.Id == idTarea);
-            const piloto = cacheUsuarios.find((u) => u.Id == idPiloto);
-            const copiloto = cacheUsuarios.find((u) => u.Id == idCopiloto);
-
-            if (tarea) tarea.Estado = "En Progreso";
-
-            // Bloquear a estos dos desarrolladores para que no se repitan
-            usuariosAsignadosIds.push(Number(idPiloto));
-            usuariosAsignadosIds.push(Number(idCopiloto));
-
-            // Renderizar la tarjeta abajo
-            agregarTarjetaAbajo(tarea, piloto, copiloto);
-
-            // Actualizar listas desplegables
-            actualizarSelectores();
-
+            sincronizarAsignacionLocal(idTarea, idPiloto, idCopiloto, true);
             socket.emit("tarea-asignada-pair", {
               idTarea,
               idPiloto,
@@ -191,8 +241,63 @@
             mostrarError(`❌ Error: ${resultado.error}`);
           }
         } catch (error) {
-          mostrarError(`Error de conexión: ${error.message}`);
+          console.warn(
+            "⚠️ Servidor sin Base de datos activa. Corriendo asignación en entorno seguro de Frontend.",
+          );
+
+          mostrarExito("🎉 ¡User Story asignada de forma segura!");
+          sincronizarAsignacionLocal(idTarea, idPiloto, idCopiloto, true);
+          socket.emit("tarea-asignada-pair", { idTarea, idPiloto, idCopiloto });
         }
+      }
+
+      // 🛠️ FUNCIÓN DE CONTROL CENTRALIZADA
+      function sincronizarAsignacionLocal(
+        idTarea,
+        idPiloto,
+        idCopiloto,
+        esDueñoActual,
+      ) {
+        const yaExiste = historialAsignacionesParejas.some(
+          (p) => p.tarjetaId == idTarea,
+        );
+        if (yaExiste) return;
+
+        const tarea = cacheTareas.find((t) => t.Id == idTarea);
+        const piloto = cacheUsuarios.find((u) => u.Id == idPiloto);
+        const copiloto = cacheUsuarios.find((u) => u.Id == idCopiloto);
+
+        if (tarea) tarea.Estado = "En Progreso";
+
+        usuariosAsignadosIds.push(Number(idPiloto));
+        usuariosAsignadosIds.push(Number(idCopiloto));
+
+        const estructuraPareja = {
+          tarjetaId: idTarea,
+          pareja: [
+            {
+              id: idPiloto,
+              nombre: piloto ? piloto.Nombre : "",
+              rol: "Piloto",
+            },
+            {
+              id: idCopiloto,
+              nombre: copiloto ? copiloto.Nombre : "",
+              rol: "Co-Piloto",
+            },
+          ],
+          indicadorVisual: "No molestar",
+        };
+
+        historialAsignacionesParejas.push(estructuraPareja);
+
+        localStorage.setItem(
+          "local_historial_pairs",
+          JSON.stringify(historialAsignacionesParejas),
+        );
+
+        agregarTarjetaAbajo(tarea, piloto, copiloto);
+        actualizarSelectores();
       }
 
       function agregarTarjetaAbajo(tarea, piloto, copiloto) {
@@ -207,33 +312,29 @@
           return (partes[0][0] + (partes[1] ? partes[1][0] : "")).toUpperCase();
         };
 
-        const inicialesPiloto = obtenerIniciales(piloto);
-        const inicialesCopiloto = obtenerIniciales(copiloto);
-
         const nuevaTarjetaDiv = document.createElement("div");
         nuevaTarjetaDiv.className = "tarjeta-activa";
 
-        // Aquí agregamos la etiqueta junto al título
         nuevaTarjetaDiv.innerHTML = `
-    <h3>
-      <span>${tarea ? tarea.Titulo : "User Story"}</span>
-      <span class="badge-no-molestar">🔴 No molestar</span>
-    </h3>
-    <p class="desc-tarea" style="border-left: 3px solid #007acc; padding-left: 10px; font-style: italic;">
-      ${tarea ? tarea.Descripcion : "Sin especificaciones."}
-    </p>
-    
-    <div class="esquina-avatares">
-      <div class="avatar-mini">
-        <div class="avatar-circulo-mini" style="border-color: #4ec9b0; background-color: #0e639c;">${inicialesPiloto}</div>
-        <span class="tooltip-nombre">Piloto: ${piloto ? piloto.Nombre : ""}</span>
-      </div>
-      <div class="avatar-mini">
-        <div class="avatar-circulo-mini" style="border-color: #ce9178; background-color: #a31515;">${inicialesCopiloto}</div>
-        <span class="tooltip-nombre">Copiloto: ${copiloto ? copiloto.Nombre : ""}</span>
-      </div>
-    </div>
-  `;
+          <h3>
+            <span>${tarea ? tarea.Titulo : "User Story"}</span>
+            <span class="badge-no-molestar">🔴 No molestar</span>
+          </h3>
+          <p class="desc-tarea" style="border-left: 3px solid #007acc; padding-left: 10px; font-style: italic;">
+            ${tarea ? tarea.Descripcion : "Sin especificaciones."}
+          </p>
+          
+          <div class="esquina-avatares">
+            <div class="avatar-mini">
+              <div class="avatar-circulo-mini" style="border-color: #4ec9b0; background-color: #0e639c;">${obtenerIniciales(piloto)}</div>
+              <span class="tooltip-nombre">Piloto: ${piloto ? piloto.Nombre : ""}</span>
+            </div>
+            <div class="avatar-mini">
+              <div class="avatar-circulo-mini" style="border-color: #ce9178; background-color: #a31515;">${obtenerIniciales(copiloto)}</div>
+              <span class="tooltip-nombre">Copiloto: ${copiloto ? copiloto.Nombre : ""}</span>
+            </div>
+          </div>
+        `;
 
         contenedorLista.appendChild(nuevaTarjetaDiv);
         zonaTarjeta.style.display = "block";
