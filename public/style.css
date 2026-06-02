@@ -1,0 +1,158 @@
+body {
+  font-family: "Consolas", "Courier New", monospace;
+  background-color: #1e1e1e;
+  color: #d4d4d4;
+  padding: 20px;
+}
+.card {
+  background-color: #252526;
+  border: 2px solid #3c3c3c;
+  border-radius: 8px;
+  padding: 20px;
+  max-width: 600px;
+  margin: 0 auto;
+  transition: all 0.3s ease;
+}
+h2 {
+  color: #4ec9b0;
+  margin-top: 0;
+}
+label {
+  display: block;
+  margin: 15px 0 5px 0;
+  font-weight: bold;
+}
+
+/* 🎯 CORRECCIÓN: Forzamos a que hereden la tipografía del body */
+select,
+button,
+option {
+  font-family: inherit; 
+  width: 100%;
+  padding: 8px;
+  margin: 5px 0 15px 0;
+  background-color: #1e1e1e;
+  color: #d4d4d4;
+  border: 1px solid #3c3c3c;
+  border-radius: 4px;
+}
+select:focus,
+button:focus {
+  outline: 2px solid #007acc;
+}
+button {
+  background-color: #007acc;
+  color: white;
+  cursor: pointer;
+  font-weight: bold;
+  margin-top: 20px;
+}
+button:hover {
+  background-color: #005a9e;
+}
+.flex-row {
+  display: flex;
+  gap: 10px;
+  margin: 15px 0;
+}
+.flex-row > div {
+  flex: 1;
+}
+.mensaje-error {
+  color: #f44336;
+  font-size: 0.9em;
+  margin: 10px 0;
+}
+.mensaje-exito {
+  color: #4ec9b0;
+  font-size: 0.9em;
+  margin: 10px 0;
+}
+
+/* 🎨 CONTENEDOR DE TARJETAS ABAJO */
+#zonaTarjetaActiva {
+  margin-top: 25px;
+  border-top: 1px solid #3c3c3c;
+  padding-top: 15px;
+}
+.tarjeta-activa {
+  position: relative;
+  background-color: #1e1e1e;
+  border: 2px dashed #4ec9b0;
+  border-radius: 6px;
+  padding: 15px;
+  margin-bottom: 15px;
+  text-align: left;
+}
+.tarjeta-activa h3 {
+  color: #4ec9b0;
+  margin: 0 0 5px 0;
+  font-size: 1.1em;
+  max-width: 70%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.tarjeta-activa .desc-tarea {
+  color: #aaaaaa;
+  font-size: 0.85em;
+  margin: 5px 0 0 0;
+  max-width: 70%;
+  line-height: 1.4;
+}
+
+/* 🔴 INDICADOR VISUAL "NO MOLESTAR" */
+.badge-no-molestar {
+  background-color: #5a1818;
+  color: #ff6b6b;
+  border: 1px solid #f44336;
+  font-size: 0.65em;
+  padding: 2px 6px;
+  border-radius: 3px;
+  text-transform: uppercase;
+  font-weight: bold;
+  letter-spacing: 0.5px;
+}
+
+/* AVATARES EN LA ESQUINA */
+.esquina-avatares {
+  position: absolute;
+  top: 15px;
+  right: 15px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.avatar-mini {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.avatar-circulo-mini {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  font-size: 1em;
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid #3c3c3c;
+}
+.tooltip-nombre {
+  display: none;
+  position: absolute;
+  bottom: -25px;
+  background-color: #2d2d2d;
+  color: #ffffff;
+  font-size: 0.75em;
+  padding: 2px 6px;
+  border-radius: 3px;
+  white-space: nowrap;
+  border: 1px solid #555;
+  z-index: 10;
+}
+.avatar-mini:hover .tooltip-nombre {
+  display: block;
+}

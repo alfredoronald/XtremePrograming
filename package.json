@@ -10,9 +10,10 @@
     "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js"
   },
   "dependencies": {
-    "dotenv": "^16.4.5",
-    "express": "^4.19.2",
-    "mssql": "^10.0.2",
+    "dotenv": "^16.6.1",
+    "express": "^4.22.2",
+    "msnodesqlv8": "^5.2.0",
+    "mssql": "^10.0.4",
     "socket.io": "^4.7.5"
   },
   "author": "",

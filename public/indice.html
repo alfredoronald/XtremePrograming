@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Vista Índice - Pair Programming</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="card">
+      <h2>💻 Asignación de Pair Programming</h2>
+
+      <div id="formularioAsignacion">
+        <label>Selecciona la User Story:</label>
+        <select id="selectTarjeta">
+          <option value="">Cargando historias...</option>
+        </select>
+
+        <div class="flex-row">
+          <div>
+            <label>👨‍💻 Piloto:</label>
+            <select id="selectPiloto">
+              <option value="">Cargando pilotos...</option>
+            </select>
+          </div>
+          <div>
+            <label>👀 Copiloto:</label>
+            <select id="selectCopiloto">
+              <option value="">Cargando copilotos...</option>
+            </select>
+          </div>
+        </div>
+
+        <button onclick="guardarAsignacionPair()">
+          🚀 Iniciar Tarea en Pareja
+        </button>
+      </div>
+
+      <div id="mensajeError" class="mensaje-error" style="display: none"></div>
+      <div id="mensajeExito" class="mensaje-exito" style="display: none"></div>
+
+      <div id="zonaTarjetaActiva" style="display: none">
+        <h4
+          style="
+            color: #858585;
+            margin: 20px 0 10px 0;
+            border-top: 1px solid #3c3c3c;
+            padding-top: 15px;
+          "
+        >
+          📋 User Stories en Sprint (Active Pairs)
+        </h4>
+        <div id="contenedorListaTarjetas"></div>
+      </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+      const socket = io();
+      let cacheUsuarios = [];
+      let cacheTareas = [];
+      let usuariosAsignadosIds = [];
+
+      document.addEventListener("DOMContentLoaded", () => {
+        cargarComponentesIniciales();
+      });
+
+      async function cargarComponentesIniciales() {
+        try {
+          const respuesta = await fetch("/api/tasks/inicializar");
+          const datos = await respuesta.json();
+
+          if (!datos.success)
+            throw new Error(datos.error || "Error al inicializar");
+
+          cacheUsuarios = datos.usuarios || [];
+          cacheTareas = datos.tareas || [];
+
+          actualizarSelectores();
+        } catch (error) {
+          mostrarError(`Error: ${error.message}`);
+        }
+      }
+
+      function actualizarSelectores() {
+        const selectTarjeta = document.getElementById("selectTarjeta");
+        const selectPiloto = document.getElementById("selectPiloto");
+        const selectCopiloto = document.getElementById("selectCopiloto");
+
+        selectTarjeta.innerHTML =
+          '<option value="">-- Selecciona una User Story --</option>';
+        selectPiloto.innerHTML =
+          '<option value="">Seleccionar piloto...</option>';
+        selectCopiloto.innerHTML =
+          '<option value="">Seleccionar copiloto...</option>';
+
+        // Filtrar historias pendientes
+        const tarjetasDisponibles = cacheTareas.filter(
+          (t) => t.Estado === "Pendiente",
+        );
+        tarjetasDisponibles.forEach((tarea) => {
+          selectTarjeta.innerHTML += `<option value="${tarea.Id}">${tarea.Titulo}</option>`;
+        });
+
+        // Filtrar usuarios activos (desaparecen si ya están asignados)
+        const usuariosDisponibles = cacheUsuarios.filter(
+          (u) => !usuariosAsignadosIds.includes(Number(u.Id)),
+        );
+
+        usuariosDisponibles.forEach((user) => {
+          selectPiloto.innerHTML += `<option value="${user.Id}">${user.Nombre}</option>`;
+          selectCopiloto.innerHTML += `<option value="${user.Id}">${user.Nombre}</option>`;
+        });
+      }
+
+      async function guardarAsignacionPair() {
+        const idTarea = document.getElementById("selectTarjeta").value;
+        const idPiloto = document.getElementById("selectPiloto").value;
+        const idCopiloto = document.getElementById("selectCopiloto").value;
+
+        if (!idTarea || !idPiloto || !idCopiloto) {
+          mostrarError(
+            "⚠️ Por favor, selecciona la historia y la pareja de desarrollo.",
+          );
+          return;
+        }
+
+        if (idPiloto === idCopiloto) {
+          mostrarError(
+            "⚠️ El piloto y el copiloto no pueden ser la misma persona.",
+          );
+          return;
+        }
+
+        try {
+          const respuesta = await fetch("/api/tasks/asignar", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ idTarea, idPiloto, idCopiloto }),
+          });
+
+          const resultado = await respuesta.json();
+
+          if (resultado.success) {
+            mostrarExito("🎉 ¡User Story asignada al par de desarrollo!");
+
+            const tarea = cacheTareas.find((t) => t.Id == idTarea);
+            const piloto = cacheUsuarios.find((u) => u.Id == idPiloto);
+            const copiloto = cacheUsuarios.find((u) => u.Id == idCopiloto);
+
+            if (tarea) tarea.Estado = "En Progreso";
+
+            // Bloquear a estos dos desarrolladores para que no se repitan
+            usuariosAsignadosIds.push(Number(idPiloto));
+            usuariosAsignadosIds.push(Number(idCopiloto));
+
+            // Renderizar la tarjeta abajo
+            agregarTarjetaAbajo(tarea, piloto, copiloto);
+
+            // Actualizar listas desplegables
+            actualizarSelectores();
+
+            socket.emit("tarea-asignada-pair", {
+              idTarea,
+              idPiloto,
+              idCopiloto,
+            });
+          } else {
+            mostrarError(`❌ Error: ${resultado.error}`);
+          }
+        } catch (error) {
+          mostrarError(`Error de conexión: ${error.message}`);
+        }
+      }
+
+      function agregarTarjetaAbajo(tarea, piloto, copiloto) {
+        const zonaTarjeta = document.getElementById("zonaTarjetaActiva");
+        const contenedorLista = document.getElementById(
+          "contenedorListaTarjetas",
+        );
+
+        const obtenerIniciales = (usuario) => {
+          if (!usuario) return "?";
+          const partes = usuario.Nombre.split(" ");
+          return (partes[0][0] + (partes[1] ? partes[1][0] : "")).toUpperCase();
+        };
+
+        const inicialesPiloto = obtenerIniciales(piloto);
+        const inicialesCopiloto = obtenerIniciales(copiloto);
+
+        const nuevaTarjetaDiv = document.createElement("div");
+        nuevaTarjetaDiv.className = "tarjeta-activa";
+
+        // Aquí agregamos la etiqueta junto al título
+        nuevaTarjetaDiv.innerHTML = `
+    <h3>
+      <span>${tarea ? tarea.Titulo : "User Story"}</span>
+      <span class="badge-no-molestar">🔴 No molestar</span>
+    </h3>
+    <p class="desc-tarea" style="border-left: 3px solid #007acc; padding-left: 10px; font-style: italic;">
+      ${tarea ? tarea.Descripcion : "Sin especificaciones."}
+    </p>
+    
+    <div class="esquina-avatares">
+      <div class="avatar-mini">
+        <div class="avatar-circulo-mini" style="border-color: #4ec9b0; background-color: #0e639c;">${inicialesPiloto}</div>
+        <span class="tooltip-nombre">Piloto: ${piloto ? piloto.Nombre : ""}</span>
+      </div>
+      <div class="avatar-mini">
+        <div class="avatar-circulo-mini" style="border-color: #ce9178; background-color: #a31515;">${inicialesCopiloto}</div>
+        <span class="tooltip-nombre">Copiloto: ${copiloto ? copiloto.Nombre : ""}</span>
+      </div>
+    </div>
+  `;
+
+        contenedorLista.appendChild(nuevaTarjetaDiv);
+        zonaTarjeta.style.display = "block";
+      }
+
+      function mostrarError(mensaje) {
+        const div = document.getElementById("mensajeError");
+        div.textContent = mensaje;
+        div.style.display = "block";
+        document.getElementById("mensajeExito").style.display = "none";
+      }
+
+      function mostrarExito(mensaje) {
+        const div = document.getElementById("mensajeExito");
+        div.textContent = mensaje;
+        div.style.display = "block";
+        document.getElementById("mensajeError").style.display = "none";
+        setTimeout(() => {
+          div.style.display = "none";
+        }, 3000);
+      }
+    </script>
+  </body>
+</html>
